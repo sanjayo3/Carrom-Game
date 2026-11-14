@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carrom Game</title>
+  <link rel="stylesheet" href="carrom.css">
+
+  
+</head>
+<body>
+  <div class="game">
+    <h1>🎯 Carrom</h1>
+
+<div class="info">
+      <span>Score: <b id="score">0</b></span>
+      <span>Coins left: <b id="coins">19</b></span>
+    </div>
+
+<canvas id="board" width="700" height="700"></canvas>
+
+<p>Drag from the striker to aim, then release to shoot.</p>
+    <button id="reset">New Game</button>
+  </div>
+
+<script>
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    const scoreText = document.getElementById("score");
+    const coinsText = document.getElementById("coins");
+    const resetButton = document.getElementById("reset");
+
+const W = canvas.width;
+    const H = canvas.height;
+    const pocketRadius = 27;
+    const boardInset = 48;
+
+let score = 0;
+    let dragging = false;
+    let aimPoint = null;
+    let coins = [];
+    let striker;
+
+const pockets = [
+      { x: 42, y: 42 },
+      { x: W - 42, y: 42 },
+      { x: 42, y: H - 42 },
+      { x: W - 42, y: H - 42 }
+    ];
+
+function createCoin(x, y, color, value = 1) {
+      return {
+        x, y,
+        vx: 0,
+        vy: 0,
+        r: 15,
+        color,
+        value,
+        active: true
+      };
+    }
+
+function newGame() {
+      score = 0;
+      coins = [];
+
+const centerX = W / 2;
+      const centerY = H / 2;
+      const spacing = 32;
+
+coins.push(createCoin(centerX, centerY, "#d93636", 5));
+
+for (let ring = 1; ring <= 2; ring++) {
+        const count = ring === 1 ? 6 : 12;
+
+for (let i = 0; i < count; i++) {
+          const angle = (Math.PI * 2 * i) / count;
+          const x = centerX + Math.cos(angle) * spacing * ring;
+          const y = centerY + Math.sin(angle) * spacing * ring;
+          const color = i % 2 === 0 ? "#f5eee2" : "#252525";
+          coins.push(createCoin(x, y, color));
+        }
+      }
+
+striker = {
+        x: W / 2,
+        y: H - 105,
+        vx: 0,
+        vy: 0,
+        r: 21,
+        color: "#4da3ff",
+        active: true
+      };
+
+updateText();
+    }
+
+function updateText() {
+      scoreText.textContent = score;
+      coinsText.textContent = coins.filter(c => c.active).length;
+    }
+
+function drawBoard() {
+      ctx.clearRect(0, 0, W, H);
+
+ctx.fillStyle = "#e2ad6d";
+      ctx.fillRect(0, 0, W, H);
+
+ctx.strokeStyle = "#6d3f1e";
+      ctx.lineWidth = 8;
+      ctx.strokeRect(boardInset, boardInset, W - boardInset * 2, H - boardInset * 2);
+
+ctx.strokeStyle = "#b86b36";
+      ctx.lineWidth = 3;
+
+ctx.beginPath();
+      ctx.moveTo(100, H - 105);
+      ctx.lineTo(W - 100, H - 105);
+      ctx.moveTo(100, H - 135);
+      ctx.lineTo(W - 100, H - 135);
+      ctx.stroke();
+
+ctx.beginPath();
+      ctx.arc(W / 2, H / 2, 60, 0, Math.PI * 2);
+      ctx.stroke();
+
+ctx.beginPath();
+      ctx.arc(W / 2, H / 2, 10, 0, Math.PI * 2);
+      ctx.stroke();
+
+for (const pocket of pockets) {
+        ctx.fillStyle = "#171717";
+        ctx.beginPath();
+        ctx.arc(pocket.x, pocket.y, pocketRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+function drawPiece(piece) {
+      if (!piece.active) return;
+
+ctx.save();
+      ctx.shadowColor = "#0007";
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetY = 3;
+
+ctx.fillStyle = piece.color;
+      ctx.beginPath();
+      ctx.arc(piece.x, piece.y, piece.r, 0, Math.PI * 2);
+      ctx.fill();
+
+ctx.shadowColor = "transparent";
+      ctx.strokeStyle = piece.color === "#252525" ? "#555" : "#8d6b45";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+ctx.restore();
+    }
+
+function drawAim() {
+      if (!dragging || !aimPoint || !striker.active) return;
+
+const dx = striker.x - aimPoint.x;
+      const dy = striker.y - aimPoint.y;
+      const length = Math.hypot(dx, dy);
+
+if (length < 2) return;
+
+const power = Math.min(length, 180);
+      const nx = dx / length;
+      const ny = dy / length;
+
+ctx.save();
+      ctx.strokeStyle = "#ffffffcc";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+
+ctx.beginPath();
+      ctx.moveTo(striker.x, striker.y);
+      ctx.lineTo(striker.x + nx * power * 2, striker.y + ny * power * 2);
+      ctx.stroke();
+
+ctx.setLineDash([]);
+      ctx.fillStyle = "#ffdd57";
+      ctx.fillRect(90, 625, power, 10);
+      ctx.strokeStyle = "#fff";
+      ctx.strokeRect(90, 625, 180, 10);
+
+ctx.restore();
+    }
+
+function draw() {
+      drawBoard();
+
+coins.forEach(drawPiece);
+      drawPiece(striker);
+      drawAim();
+    }
+
+function getPointer(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (W / rect.width),
+        y: (event.clientY - rect.top) * (H / rect.height)
+      };
+    }
+
+function allStopped() {
+      const pieces = [...coins, striker];
+      return pieces.every(p =>
+        !p.active || (Math.abs(p.vx) < 0.05 && Math.abs(p.vy) < 0.05)
+      );
+    }
+
+function moveStriker(x) {
+      if (!allStopped()) return;
+
+striker.x = Math.max(105, Math.min(W - 105, x));
+      striker.y = H - 105;
+    }
+
+canvas.addEventListener("pointerdown", event => {
+      if (!allStopped()) return;
+
+const point = getPointer(event);
+
+if (Math.hypot(point.x - striker.x, point.y - striker.y) < 50) {
+        dragging = true;
+        aimPoint = point;
+        canvas.setPointerCapture(event.pointerId);
+      } else if (point.y > H - 180) {
+        moveStriker(point.x);
+      }
+    });
+
+canvas.addEventListener("pointermove", event => {
+      const point = getPointer(event);
+
+if (dragging) {
+        aimPoint = point;
+      } else if (allStopped() && point.y > H - 180) {
+        moveStriker(point.x);
+      }
+    });
+
+canvas.addEventListener("pointerup", event => {
+      if (!dragging) return;
+
+dragging = false;
+      const point = getPointer(event);
+
+const dx = striker.x - point.x;
+      const dy = striker.y - point.y;
+      const distance = Math.hypot(dx, dy);
+
+if (distance > 12) {
+        const power = Math.min(distance, 180) * 0.075;
+        striker.vx = (dx / distance) * power;
+        striker.vy = (dy / distance) * power;
+      }
+
+aimPoint = null;
+    });
+
+function keepInside(piece) {
+      const min = boardInset + piece.r;
+      const max = W - boardInset - piece.r;
+
+if (piece.x < min) {
+        piece.x = min;
+        piece.vx *= -0.8;
+      }
+
+if (piece.x > max) {
+        piece.x = max;
+        piece.vx *= -0.8;
+      }
+
+if (piece.y < min) {
+        piece.y = min;
+        piece.vy *= -0.8;
+      }
+
+if (piece.y > max) {
+        piece.y = max;
+        piece.vy *= -0.8;
+      }
+    }
+
+function checkPocket(piece) {
+      if (!piece.active) return;
+
+for (const pocket of pockets) {
+        const distance = Math.hypot(piece.x - pocket.x, piece.y - pocket.y);
+
+if (distance < pocketRadius - 3) {
+          piece.active = false;
+          piece.vx = 0;
+          piece.vy = 0;
+
+if (piece === striker) {
+            score = Math.max(0, score - 1);
+            setTimeout(() => {
+              striker.active = true;
+              striker.x = W / 2;
+              striker.y = H - 105;
+              updateText();
+            }, 600);
+          } else {
+            score += piece.value;
+          }
+
+updateText();
+          break;
+        }
+      }
+    }
+
+function collide(a, b) {
+      if (!a.active || !b.active) return;
+
+const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const distance = Math.hypot(dx, dy);
+      const minimum = a.r + b.r;
+
+if (distance === 0 || distance >= minimum) return;
+
+const nx = dx / distance;
+      const ny = dy / distance;
+      const overlap = minimum - distance;
+
+a.x -= nx * overlap / 2;
+      a.y -= ny * overlap / 2;
+      b.x += nx * overlap / 2;
+      b.y += ny * overlap / 2;
+
+const relativeVelocity =
+        (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+
+if (relativeVelocity < 0) return;
+
+const impulse = relativeVelocity * 0.9;
+
+a.vx -= impulse * nx;
+      a.vy -= impulse * ny;
+      b.vx += impulse * nx;
+      b.vy += impulse * ny;
+    }
+
+function update() {
+      const pieces = [...coins, striker];
+
+pieces.forEach(piece => {
+        if (!piece.active) return;
+
+piece.x += piece.vx;
+        piece.y += piece.vy;
+
+piece.vx *= 0.985;
+        piece.vy *= 0.985;
+
+if (Math.abs(piece.vx) < 0.03) piece.vx = 0;
+        if (Math.abs(piece.vy) < 0.03) piece.vy = 0;
+
+keepInside(piece);
+        checkPocket(piece);
+      });
+
+for (let i = 0; i < pieces.length; i++) {
+        for (let j = i + 1; j < pieces.length; j++) {
+          collide(pieces[i], pieces[j]);
+        }
+      }
+
+draw();
+      requestAnimationFrame(update);
+    }
+
+resetButton.addEventListener("click", newGame);
+
+newGame();
+    update();
+  </script>
+</body>
+</html>
